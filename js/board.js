@@ -206,13 +206,13 @@ export class Board {
     });
 
     // click targets & highlights per cell
-    const hbG = new THREE.BoxGeometry(0.056, 0.2, 0.11);
+    const hbG = new THREE.BoxGeometry(0.056, 0.02, 0.11);
     const hbM = new THREE.MeshBasicMaterial({ visible: false });
     this.cells = [];
     for (let r = 0; r < 3; r++) for (let c = 0; c < 12; c++) {
       const p = cellXZ(r, c);
       const hb = new THREE.Mesh(hbG, hbM);
-      hb.position.set(p.x, SURF + 0.1, p.z);
+      hb.position.set(p.x, SURF + 0.01, p.z);
       hb.userData = { kind: 'cell', r, c };
       this.group.add(hb); this.hit.push(hb);
     }

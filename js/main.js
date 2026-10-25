@@ -7,7 +7,7 @@ import { buildPerson } from './people.js';
 import { Sfx } from './audio.js';
 import { Net } from './net.js';
 import { CHARACTERS, CONVERSATIONS, REACTIONS } from './dialogs.js';
-import { newGame, rollDice, applyMove, allOptions, anyMoves, other, posOf, N, OFF } from './rules.js';
+import { newGame, rollDice, applyMove, allOptions, anyMoves, other, posOf, cellOf, N, OFF } from './rules.js';
 
 // ---------------------------------------------------------------- i18n
 const STR = {
@@ -279,7 +279,9 @@ function setConn(cls, text) {
 }
 
 function onStatus(st, info) {
-  if (st === 'connected') {
+  if (st === 'link') {
+    if (G.mode === 'guest') net.send({ t: 'hello', name: G.names.B });
+  } else if (st === 'connected') {
     setConn('ok', t('connOk'));
     if (G.mode === 'guest') net.send({ t: 'hello', name: G.names.B });
   } else if (st === 'hosting') setConn('wait', t('waitingOpp'));
@@ -301,16 +303,19 @@ function onMessage(msg) {
     } else if (msg.t === 'act') hostAct(msg.act, 'B');
   } else if (G.mode === 'guest') {
     if (msg.t === 'state') {
+      if (G.s && msg.state.seq <= G.s.seq && !msg.retained) return;
       G.names = { A: msg.names.A, B: msg.names.B };
       G.s = msg.state;
-      present(msg.state, msg.ev);
+      present(msg.state, msg.retained ? { type: 'sync' } : msg.ev);
     }
   }
 }
 
 // ---------------------------------------------------------------- authority (host or local)
 function beginGame() {
+  const seq = G.s ? G.s.seq : 0;
   G.s = newGame();
+  G.s.seq = seq; // keep counting so a guest never mistakes the new game for an old message
   G.s.started = true;
   let va, vb;
   do { va = 1 + Math.floor(Math.random() * 6); vb = 1 + Math.floor(Math.random() * 6); } while (va === vb);
@@ -662,9 +667,15 @@ canvas.addEventListener('pointerup', (e) => {
   if (!canAct()) return;
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hit = ray.intersectObjects(board.hit, false)[0];
+  // flat cell pads plus the counters themselves, so tall stacks never shadow a neighbouring cell
+  const hit = ray.intersectObjects([...board.hit, ...board.pieces.A, ...board.pieces.B], false)[0];
   if (!hit) return;
-  const u = hit.object.userData, me = G.view.turn;
+  let u = hit.object.userData;
+  const me = G.view.turn;
+  if (u.player && u.pos !== undefined && !u.kind) {
+    if (u.pos >= 1 && u.pos <= 30) { const cc = cellOf(u.player, u.pos); u = { kind: 'cell', r: cc.r, c: cc.c }; }
+    else u = { kind: u.pos === 0 ? 'pool' : 'dish', player: u.player };
+  }
   let pos = null;
   if (u.kind === 'cell') pos = posOf(me, u.r, u.c);
   else if (u.kind === 'dish' && u.player === me) pos = OFF;
