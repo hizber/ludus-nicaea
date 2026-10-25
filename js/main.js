@@ -192,7 +192,7 @@ function routeFromURL() {
   const room = (q.get('room') || '').toUpperCase();
   $('#name').value = store.get('ludus-name', '');
   if (room) {
-    if (store.get('ludus-host-' + room, null)) startHost(room);
+    if (!q.get('j') && store.get('ludus-host-' + room, null)) startHost(room);
     else startGuest(room);
   } else {
     show('#lobby');
@@ -211,7 +211,7 @@ $('#btnJoin').onclick = () => {
   sfx.ensure(); myName();
   const code = $('#joinCode').value.trim().toUpperCase();
   if (code.length < 4) return;
-  history.replaceState(null, '', '?room=' + code);
+  history.replaceState(null, '', '?room=' + code + '&j=1');
   startGuest(code);
 };
 document.querySelectorAll('[data-setlang]').forEach((b) => b.onclick = () => { lang = b.dataset.setlang; store.set('ludus-lang', lang); applyLang(); });
@@ -240,7 +240,7 @@ function startHost(code) {
   store.set('ludus-host-' + code, { state: G.s, names: G.names });
   enterTable();
   show('#btnInvite');
-  const link = location.origin + location.pathname + '?room=' + code;
+  const link = location.origin + location.pathname + '?room=' + code + '&j=1';
   $('#inviteLink').value = link;
   $('#roomCode').textContent = code;
   if (navigator.share) show('#btnShare');
