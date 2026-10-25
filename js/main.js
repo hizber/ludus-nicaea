@@ -741,12 +741,13 @@ $('#btnView').onclick = () => {
 };
 
 // ---------------------------------------------------------------- conversations
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
 class Talk {
   constructor() {
     this.enabled = store.get('ludus-talk', true);
     this.voice = store.get('ludus-voice', true);
     this.busy = false;
-    this.next = performance.now() + 9000;
+    this.next = performance.now() + 4000;
     this.order = CONVERSATIONS.map((_, i) => i).sort(() => Math.random() - 0.5);
     this.idx = 0;
     this.token = 0;
@@ -756,27 +757,38 @@ class Talk {
     const load = () => { this.voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; };
     load();
     if (window.speechSynthesis) speechSynthesis.onvoiceschanged = load;
+    // One reusable element, unlocked by the first tap, so browsers that only allow
+    // audio started from a gesture (Safari, iOS) still play every later clip.
+    this.player = new Audio();
+    this.player.preload = 'auto';
+    const unlock = () => {
+      removeEventListener('pointerdown', unlock, true); removeEventListener('keydown', unlock, true);
+      if (this.player.paused) { this.player.src = SILENT_WAV; this.player.play().catch(() => {}); }
+      if (window.speechSynthesis) speechSynthesis.resume();
+    };
+    addEventListener('pointerdown', unlock, true); addEventListener('keydown', unlock, true);
   }
   setEnabled(on) { this.enabled = on; store.set('ludus-talk', on); if (!on) this.cancel(); }
   setVoice(on) {
     this.voice = on; store.set('ludus-voice', on);
-    if (!on) { if (window.speechSynthesis) speechSynthesis.cancel(); if (this.audio) this.audio.pause(); }
+    if (!on) { if (window.speechSynthesis) speechSynthesis.cancel(); this.player.pause(); }
   }
   cancel() {
     this.token++;
     if (window.speechSynthesis) speechSynthesis.cancel();
-    if (this.audio) { this.audio.pause(); this.audio = null; }
+    this.player.pause();
     Object.values(this.bubbles).forEach((b) => b.classList.remove('show'));
     this.busy = false; this.active = null;
-    this.next = performance.now() + 15000;
+    this.next = performance.now() + 3000;
   }
   figFor(sp) { return sp === 'E' ? figs.A : figs.B; }
   pickVoice(sp) {
     const vs = this.voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(lang));
     if (!vs.length) return null;
-    const male = vs.filter((v) => /male|erkek|yelda|cem|tolga|daniel|george|arthur|aaron|fred|rishi/i.test(v.name) && !/female/i.test(v.name));
-    const pool = male.length ? male : vs;
-    return sp === 'E' ? pool[0] : pool[Math.min(1, pool.length - 1)];
+    // both speakers are men: never fall back to a female voice
+    const male = vs.filter((v) => /\bmale|erkek|ahmet|tolga|cem\b|daniel|george|arthur|aaron|fred|rishi|thomas|ryan|guy|andrew|brian|oliver/i.test(v.name) && !/female/i.test(v.name));
+    if (!male.length) return null;
+    return sp === 'E' ? male[0] : male[Math.min(1, male.length - 1)];
   }
   say(sp, text, token, clip) {
     return new Promise((resolve) => {
@@ -801,6 +813,8 @@ class Talk {
         if (done || token !== this.token) return;
         const voice = this.voice && window.speechSynthesis ? this.pickVoice(sp) : null;
         if (voice) {
+          // a stalled queue (Chrome) would silence every later line: clear it first
+          speechSynthesis.cancel();
           const u = new SpeechSynthesisUtterance(text);
           u.voice = voice; u.lang = voice.lang;
           u.pitch = sp === 'E' ? 0.72 : 1.08;
@@ -809,20 +823,22 @@ class Talk {
           u.onend = () => setTimeout(finish, 350);
           u.onerror = () => setTimeout(finish, minMs);
           speechSynthesis.speak(u);
-          setTimeout(finish, minMs * 2.5 + 4000);
+          setTimeout(finish, minMs * 1.6 + 2000);
         } else setTimeout(finish, minMs);
       };
       if (this.voice && clip) {
         // pre-recorded neural voice; lines without a clip fall back to the browser voice
-        const a = new Audio(`assets/voice/${lang}/${clip}.mp3`);
-        a.volume = 0.95;
-        this.audio = a;
+        const a = this.player;
         let fellBack = false;
-        const fallback = () => { if (fellBack) return; fellBack = true; if (this.audio === a) this.audio = null; speak(); };
-        a.onended = () => setTimeout(finish, 300);
+        const fallback = () => { if (fellBack || done) return; fellBack = true; a.onended = a.onerror = a.onloadedmetadata = null; speak(); };
+        a.onended = () => { if (!fellBack) setTimeout(finish, 300); };
         a.onerror = fallback;
-        a.play().catch(() => { if (a.error) fallback(); else setTimeout(finish, minMs); });
-        setTimeout(finish, minMs * 3 + 6000);
+        // once the length is known, never wait much past the end of the clip
+        a.onloadedmetadata = () => { if (isFinite(a.duration)) setTimeout(() => { if (!fellBack) finish(); }, a.duration * 1000 + 1500); };
+        a.volume = 0.95;
+        a.src = `assets/voice/${lang}/${clip}.mp3`;
+        a.play().catch(() => { if (!fellBack) fallback(); });
+        setTimeout(() => { if (!fellBack) finish(); }, minMs * 2 + 4000);
         return;
       }
       speak();
@@ -841,7 +857,7 @@ class Talk {
       this.busy = false;
       figs.A.lookAt(new THREE.Vector3(0, SURF, 0));
       figs.B.lookAt(new THREE.Vector3(0, SURF, 0));
-      this.next = performance.now() + 22000 + Math.random() * 20000;
+      this.next = performance.now() + 2500 + Math.random() * 3000;
     }
   }
   react(player, kind) {
@@ -853,7 +869,7 @@ class Talk {
     this.busy = true;
     const token = ++this.token;
     this.say(sp, lang === 'tr' ? tr : en, token, `r_${kind}_${i}_${sp}`).then(() => {
-      if (token === this.token) { this.busy = false; this.next = Math.max(this.next, performance.now() + 12000); }
+      if (token === this.token) { this.busy = false; this.next = Math.max(this.next, performance.now() + 2500); }
     });
   }
   update(now) {
@@ -895,7 +911,7 @@ function runTweens() {
   }
 }
 // Background tabs get no animation frames: keep the game moving anyway.
-setInterval(() => { if (performance.now() - lastFrame > 300) runTweens(); }, 100);
+setInterval(() => { if (performance.now() - lastFrame > 300) { runTweens(); talk.update(performance.now()); } }, 100);
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const el = clock.elapsedTime;
