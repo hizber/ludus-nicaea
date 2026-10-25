@@ -7,6 +7,7 @@ import { buildPerson } from './people.js';
 import { Sfx } from './audio.js';
 import { Net } from './net.js';
 import { CHARACTERS, CONVERSATIONS, REACTIONS } from './dialogs.js';
+import { chooseMove } from './bot.js';
 import { newGame, rollDice, applyMove, allOptions, anyMoves, other, posOf, cellOf, N, OFF } from './rules.js';
 
 // ---------------------------------------------------------------- i18n
@@ -15,7 +16,7 @@ const STR = {
     load1: 'Mermer ocaktan çıkarılıyor…', load2: 'Nikaia surları örülüyor…', load3: 'Askania Gölü dolduruluyor…', load4: 'Oyuncular yerlerini alıyor…',
     era: 'Nikaia · Milattan Sonra 325',
     lede: 'Romalıların “On İki Yazıt Oyunu”, İznik Müzesi’ndeki taş tablanın benzeri Prokonnesos mermerinden bir tablada. Üç zar, onbeşer taş ve aşağıda uzanan şehir.',
-    yourName: 'Adınız', namePh: 'ör. Theodoros', host: 'Çevrimiçi oyun kur', local: 'Bu cihazda oyna', code: 'Kod', join: 'Katıl', howto: 'Nasıl oynanır?',
+    yourName: 'Adınız', namePh: 'ör. Theodoros', host: 'Çevrimiçi oyun kur', local: 'Bu cihazda oyna', solo: 'Robota karşı oyna', robot: 'robot', code: 'Kod', join: 'Katıl', howto: 'Nasıl oynanır?',
     inviteKicker: 'Arkadaşını davet et', inviteTitle: 'Bu bağlantıyı gönder', copy: 'Kopyala', share: 'Paylaş…', waiting: 'Rakibinin masaya oturması bekleniyor…',
     roomCode: 'Oda kodu', keepOpen: 'Bu sekmeyi açık tutun.', close: 'Kapat', copied: 'Bağlantı kopyalandı!',
     roll: 'Zarları at', view: 'Görünüm', talk: 'Sohbet', voice: 'Seslendirme', sound: 'Ses', rules: 'Kurallar', invite: 'Davet', rematch: 'Yeniden oyna',
@@ -34,7 +35,7 @@ const STR = {
     load1: 'Quarrying the marble…', load2: 'Raising the walls of Nicaea…', load3: 'Filling Lake Ascania…', load4: 'The players take their seats…',
     era: 'Nicaea · Anno Domini CCCXXV',
     lede: 'The Roman “game of twelve lines”, on a Proconnesian marble slab like the one kept in the İznik Museum. Three dice, fifteen counters each, and the city below.',
-    yourName: 'Your name', namePh: 'e.g. Theodoros', host: 'Create online game', local: 'Play on this device', code: 'Code', join: 'Join', howto: 'How to play',
+    yourName: 'Your name', namePh: 'e.g. Theodoros', host: 'Create online game', local: 'Play on this device', solo: 'Play against the robot', robot: 'robot', code: 'Code', join: 'Join', howto: 'How to play',
     inviteKicker: 'Invite your friend', inviteTitle: 'Send this link', copy: 'Copy', share: 'Share…', waiting: 'Waiting for your opponent to take their seat…',
     roomCode: 'Room code', keepOpen: 'Keep this tab open.', close: 'Close', copied: 'Link copied!',
     roll: 'Throw the dice', view: 'View', talk: 'Talk', voice: 'Voice', sound: 'Sound', rules: 'Rules', invite: 'Invite', rematch: 'Play again',
@@ -207,6 +208,7 @@ function hide(sel) { $(sel).classList.add('hidden'); }
 function myName() { const n = $('#name').value.trim(); store.set('ludus-name', n); return n; }
 
 $('#btnLocal').onclick = () => { sfx.ensure(); myName(); startLocal(); };
+$('#btnSolo').onclick = () => { sfx.ensure(); myName(); startSolo(); };
 $('#btnHost').onclick = () => { sfx.ensure(); myName(); const code = randomCode(); history.replaceState(null, '', '?room=' + code); startHost(code); };
 $('#btnJoin').onclick = () => {
   sfx.ensure(); myName();
@@ -227,6 +229,14 @@ function enterTable() {
 
 function startLocal() {
   G.mode = 'local'; G.me = null;
+  G.names = { A: myName() || CHARACTERS.E[lang], B: CHARACTERS.Y[lang] };
+  enterTable();
+  beginGame();
+}
+
+// One person at the table: they sit as Player I and the robot plays Player II.
+function startSolo() {
+  G.mode = 'solo'; G.me = 'A';
   G.names = { A: myName() || CHARACTERS.E[lang], B: CHARACTERS.Y[lang] };
   enterTable();
   beginGame();
@@ -275,7 +285,7 @@ $('#btnCloseInvite').onclick = () => hide('#invite');
 function setConn(cls, text) {
   const el = $('#conn');
   el.className = cls; el.textContent = text;
-  if (G.mode === 'local') el.classList.add('hidden');
+  if (G.mode === 'local' || G.mode === 'solo') el.classList.add('hidden');
 }
 
 function onStatus(st, info) {
@@ -337,6 +347,14 @@ function commit(ev) {
 function dispatch(act) {
   if (G.mode === 'guest') net.send({ t: 'act', act });
   else hostAct(act, G.mode === 'local' ? G.s.turn : 'A');
+}
+
+const BOT = 'B';
+function botTurn() {
+  const s = G.s;
+  if (G.mode !== 'solo' || !s || s.turn !== BOT) return;
+  if (s.phase === 'roll') hostAct({ type: 'roll' }, BOT);
+  else if (s.phase === 'move') { const m = chooseMove(s); if (m) hostAct({ type: 'move', die: m.die, from: m.from, to: m.to }, BOT); }
 }
 
 function diceVisuals(dice) {
@@ -428,6 +446,8 @@ async function render(state, ev) {
   if (G.mode === 'local' && G.viewMode === 'play' && state.turn) setView('play', state.turn);
   G.animating = false;
   refreshOptions();
+  // the robot thinks once the table has caught up with the latest state
+  if (G.mode === 'solo' && state.seq === G.s.seq && state.turn === BOT) setTimeout(() => { if (G.s.seq === state.seq) botTurn(); }, state.phase === 'roll' ? 900 : 650);
 }
 
 const tweens = [];
@@ -598,7 +618,7 @@ function updateHUD() {
     const c = v.counts[p];
     let onb = 0; for (let i = 1; i <= 30; i++) onb += c[i];
     const nm = G.names[p] || (p === 'A' ? t('p1') : t('p2'));
-    $('#name' + p).textContent = nm + (G.me === p ? ` (${t('you')})` : '');
+    $('#name' + p).textContent = nm + (G.me === p ? ` (${t('you')})` : G.mode === 'solo' ? ` (${t('robot')})` : '');
     $('#stats' + p).textContent = t('stats', { w: c[0], b: onb, o: c[OFF] });
     $('#card' + p).classList.toggle('active', v.turn === p && v.phase !== 'over');
   }
