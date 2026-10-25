@@ -110,7 +110,7 @@ const G = {
 let board, scenery, figs = {};
 const net = new Net({ onMessage, onStatus });
 
-const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+const nextFrame = () => new Promise((r) => { let done = false; const go = () => { if (!done) { done = true; setTimeout(r, 0); } }; requestAnimationFrame(go); setTimeout(go, 60); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function boot() {
