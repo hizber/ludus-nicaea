@@ -797,29 +797,35 @@ class Talk {
         setTimeout(resolve, 450);
       };
       const minMs = 1800 + text.length * 62;
+      const speak = () => {
+        if (done || token !== this.token) return;
+        const voice = this.voice && window.speechSynthesis ? this.pickVoice(sp) : null;
+        if (voice) {
+          const u = new SpeechSynthesisUtterance(text);
+          u.voice = voice; u.lang = voice.lang;
+          u.pitch = sp === 'E' ? 0.72 : 1.08;
+          u.rate = sp === 'E' ? 0.9 : 1.0;
+          u.volume = 0.95;
+          u.onend = () => setTimeout(finish, 350);
+          u.onerror = () => setTimeout(finish, minMs);
+          speechSynthesis.speak(u);
+          setTimeout(finish, minMs * 2.5 + 4000);
+        } else setTimeout(finish, minMs);
+      };
       if (this.voice && clip) {
-        // pre-recorded neural voice
+        // pre-recorded neural voice; lines without a clip fall back to the browser voice
         const a = new Audio(`assets/voice/${lang}/${clip}.mp3`);
         a.volume = 0.95;
         this.audio = a;
+        let fellBack = false;
+        const fallback = () => { if (fellBack) return; fellBack = true; if (this.audio === a) this.audio = null; speak(); };
         a.onended = () => setTimeout(finish, 300);
-        a.onerror = () => setTimeout(finish, minMs);
-        a.play().catch(() => setTimeout(finish, minMs));
+        a.onerror = fallback;
+        a.play().catch(() => { if (a.error) fallback(); else setTimeout(finish, minMs); });
         setTimeout(finish, minMs * 3 + 6000);
         return;
       }
-      const voice = this.voice && window.speechSynthesis ? this.pickVoice(sp) : null;
-      if (voice) {
-        const u = new SpeechSynthesisUtterance(text);
-        u.voice = voice; u.lang = voice.lang;
-        u.pitch = sp === 'E' ? 0.72 : 1.08;
-        u.rate = sp === 'E' ? 0.9 : 1.0;
-        u.volume = 0.95;
-        u.onend = () => setTimeout(finish, 350);
-        u.onerror = () => setTimeout(finish, minMs);
-        speechSynthesis.speak(u);
-        setTimeout(finish, minMs * 2.5 + 4000);
-      } else setTimeout(finish, minMs);
+      speak();
     });
   }
   async conversation(ci) {
