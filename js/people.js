@@ -140,23 +140,26 @@ function handGeometry() {
 
 const L1 = 0.29, L2 = 0.27;
 
-export function buildPerson(kind) {
+export function buildPerson(kind, face = null) {
   const elder = kind === 'elder';
   const root = new THREE.Group();
-  const skinTone = elder ? 0xb07c58 : 0xc28d66;
+  const skinTone = face ? face.skin : elder ? 0xb07c58 : 0xc28d66;
   const skin = new THREE.MeshPhysicalMaterial({
     color: skinTone, roughness: 0.58, normalMap: makeSkinNormal(), normalScale: new THREE.Vector2(0.25, 0.25),
-    sheen: 0.4, sheenColor: new THREE.Color(0xc8604a), sheenRoughness: 0.6, clearcoat: 0.04,
+    sheen: face ? 0.1 : 0.4, sheenColor: new THREE.Color(0xc8604a), sheenRoughness: 0.6, clearcoat: 0.04,
   });
+  // colours follow the portraits: Theodoros in olive-brown with a madder-red himation,
+  // Markianos in undyed wool with brown clavi and a brown cloak
+  const tunicRGB = elder ? [0.40, 0.35, 0.24] : [0.88, 0.84, 0.74];
   const tunicTex = elder
-    ? makeWool([0.86, 0.82, 0.72], { seed: 3, clavi: [0.42, 0.22, 0.18] })
-    : makeWool([0.88, 0.85, 0.77], { seed: 4, clavi: [0.30, 0.12, 0.26] });
+    ? makeWool(tunicRGB, { seed: 3, clavi: [0.62, 0.45, 0.22] })
+    : makeWool(tunicRGB, { seed: 4, clavi: [0.36, 0.22, 0.13] });
   const tunic = new THREE.MeshStandardMaterial({ map: tunicTex.map, normalMap: tunicTex.normalMap, roughness: 0.95 });
-  const plainT = elder ? makeWool([0.86, 0.82, 0.72], { seed: 3 }) : makeWool([0.88, 0.85, 0.77], { seed: 4 });
+  const plainT = makeWool(tunicRGB, { seed: elder ? 3 : 4 });
   const sleeve = new THREE.MeshStandardMaterial({ map: plainT.map, normalMap: plainT.normalMap, roughness: 0.95 });
-  const mantleTex = elder ? makeWool([0.58, 0.40, 0.20], { seed: 6, hem: [0.03, [0.36, 0.22, 0.12]] }) : makeWool([0.42, 0.13, 0.11], { seed: 8 });
+  const mantleTex = elder ? makeWool([0.46, 0.12, 0.10], { seed: 6, hem: [0.03, [0.30, 0.08, 0.06]] }) : makeWool([0.38, 0.23, 0.14], { seed: 8 });
   const mantle = new THREE.MeshStandardMaterial({ map: mantleTex.map, normalMap: mantleTex.normalMap, roughness: 0.95, side: THREE.DoubleSide });
-  const hairT = makeHairTex(elder ? [0.5, 0.47, 0.44] : [0.13, 0.09, 0.06]);
+  const hairT = makeHairTex(face ? new THREE.Color(face.hair).toArray().map((v) => Math.min(1, v * 1.6)) : elder ? [0.5, 0.47, 0.44] : [0.13, 0.09, 0.06]);
   const hair = new THREE.MeshStandardMaterial({ map: hairT.map, normalMap: hairT.normalMap, roughness: 0.75 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x3b2516, roughness: 0.6 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 1, roughness: 0.3 });
@@ -213,46 +216,76 @@ export function buildPerson(kind) {
     belt.rotation.x = Math.PI / 2; belt.scale.set(1, 0.7, 1);
     add(torso, new THREE.BoxGeometry(0.03, 0.024, 0.008), gold, 0, 0.13, 0.106);
   }
-  const neck = add(torso, new THREE.CylinderGeometry(0.055, 0.068, 0.12, 20), skin, 0, 0.59, 0.005);
+  const neck = add(torso, new THREE.CylinderGeometry(0.047, 0.066, 0.1, 20), skin, 0, 0.565, -0.008);
 
   // ---- head
   const headPivot = new THREE.Group(); headPivot.position.set(0, 0.64, 0.01); torso.add(headPivot);
   const head = new THREE.Group(); head.position.set(0, 0.085, 0.012); headPivot.add(head);
   const hg = headGeometry(elder ? 11 : 13);
-  add(head, hg, skin);
+  // masks work on the direction from the head centre (n = normalised, in head proportions)
+  const dir = (x, y, z) => { const a = x / 0.074, b = y / 0.104, c = z / 0.094, l = Math.hypot(a, b, c) || 1; return [a / l, b / l, c / l]; };
+  const hairLine = (nz) => { const front = smooth(-0.1, 0.8, nz); return elder && !face ? -0.25 + front * 0.95 : -0.42 + front * 0.82; };
+  const hairMask = (x, y, z) => { const [, ny, nz] = dir(x, y, z); const l = hairLine(nz); return smooth(l, l + 0.08, ny); };
+  const beardMask = (x, y, z) => {
+    const [nx, ny, nz] = dir(x, y, z);
+    if (nz < -0.15) return 0;
+    const th = -0.12 - 0.42 * smooth(0.25, 0.85, nz); // jawline on the sides, below the nose in front
+    const m = smooth(th, th - 0.1, ny);
+    const mouth = gauss(nx / 0.22) * gauss((ny + 0.6) / 0.07) * smooth(0.7, 0.9, nz);
+    return Math.max(0, m - mouth * 1.5) * smooth(-0.15, 0.1, nz);
+  };
   for (const s of [-1, 1]) {
-    const eye = add(head, new THREE.SphereGeometry(0.0096, 20, 14), eyeW, s * 0.031, 0.01, 0.071);
-    add(eye, new THREE.SphereGeometry(0.0049, 16, 10), iris, 0, 0, 0.0068);
-    const lid = add(head, new THREE.SphereGeometry(0.0108, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), skin, s * 0.031, 0.011, 0.071);
-    lid.rotation.x = 0.55;
-    const brow = add(head, new THREE.CapsuleGeometry(0.0035, 0.024, 3, 6), hair, s * 0.031, 0.034, 0.083);
-    brow.rotation.z = Math.PI / 2 + s * 0.12;
     const ear = add(head, new THREE.SphereGeometry(1, 12, 10), skin, s * 0.074, 0.0, -0.008);
     ear.scale.set(0.01, 0.03, 0.019);
   }
-  // hair: Constantinian cap with fringe for the young man; receding, curly for the elder
-  // masks work on the direction from the head centre (n = normalised, in head proportions)
-  const dir = (x, y, z) => { const a = x / 0.074, b = y / 0.104, c = z / 0.094, l = Math.hypot(a, b, c) || 1; return [a / l, b / l, c / l]; };
-  const hairMask = (x, y, z) => {
-    const [nx, ny, nz] = dir(x, y, z);
-    const front = smooth(-0.1, 0.8, nz);
-    const line = elder ? -0.25 + front * 0.95 : -0.42 + front * 0.82; // nape → forehead hairline
-    const ear = gauss(nx * 0) * smooth(0.55, 0.9, Math.abs(nx)) * smooth(0.2, -0.3, ny) * 0.25; // clear the ears
-    return smooth(line, line + 0.08, ny + ear * -1);
-  };
-  add(head, shell(hg, hairMask, elder ? 0.0075 : 0.009, elder ? 0.004 : 0.003), hair);
-  if (elder) {
-    const beardMask = (x, y, z) => {
-      const [nx, ny, nz] = dir(x, y, z);
-      if (nz < -0.15) return 0;
-      const th = -0.12 - 0.42 * smooth(0.25, 0.85, nz); // jawline on the sides, below the nose in front
-      const m = smooth(th, th - 0.1, ny);
-      const mouth = gauss(nx / 0.22) * gauss((ny + 0.6) / 0.07) * smooth(0.7, 0.9, nz);
-      return Math.max(0, m - mouth * 1.5) * smooth(-0.15, 0.1, nz);
+  if (face) {
+    // Portrait projected onto the front of the head; sides and back take the portrait's hair, beard and skin tones.
+    const tex = new THREE.TextureLoader().load(face.url);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const pos = hg.attributes.position, n = pos.count;
+    const uv = new Float32Array(n * 2), pw = new Float32Array(n), col = new Float32Array(n * 3);
+    const cS = new THREE.Color(face.skin), cH = new THREE.Color(face.hair), cB = new THREE.Color(face.beard), c = new THREE.Color();
+    const ppm = face.ipd / 0.062;
+    for (let i = 0; i < n; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const [, ny, nz] = dir(x, y, z);
+      uv[i * 2] = (face.eye[0] + x * ppm) / face.size;
+      uv[i * 2 + 1] = 1 - (face.eye[1] - (y - 0.01) * ppm) / face.size;
+      const w = smooth(0.2, 0.55, nz);
+      pw[i] = w;
+      const l = hairLine(nz);
+      c.copy(cS).lerp(cB, beardMask(x, y, z)).lerp(cH, smooth(l, l + 0.08, ny));
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    hg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    hg.setAttribute('pw', new THREE.BufferAttribute(pw, 1));
+    hg.setAttribute('baseCol', new THREE.BufferAttribute(col, 3));
+    const fm = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.62, sheen: 0.25, sheenColor: new THREE.Color(0xc8604a), sheenRoughness: 0.6 });
+    fm.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float pw;\nattribute vec3 baseCol;\nvarying float vPw;\nvarying vec3 vBase;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPw = pw;\nvBase = baseCol;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vPw;\nvarying vec3 vBase;')
+        .replace('#include <map_fragment>', 'vec4 texel = texture2D( map, vMapUv );\ndiffuseColor.rgb = mix( vBase, texel.rgb, vPw );');
     };
-    add(head, shell(hg, beardMask, 0.012, 0.006), hair);
-    const mus = add(head, new THREE.CapsuleGeometry(0.006, 0.035, 4, 8), hair, 0, -0.052, 0.088);
-    mus.rotation.z = Math.PI / 2; mus.scale.set(1, 1, 0.8);
+    add(head, hg, fm);
+    // curly volume over the crown and the back, where the photo cannot reach
+    add(head, shell(hg, (x, y, z) => hairMask(x, y, z) * (1 - smooth(0.05, 0.4, dir(x, y, z)[2])), 0.012, 0.016), hair);
+  } else {
+    add(head, hg, skin);
+    for (const s of [-1, 1]) {
+      const eye = add(head, new THREE.SphereGeometry(0.0096, 20, 14), eyeW, s * 0.031, 0.01, 0.071);
+      add(eye, new THREE.SphereGeometry(0.0049, 16, 10), iris, 0, 0, 0.0068);
+      const lid = add(head, new THREE.SphereGeometry(0.0108, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), skin, s * 0.031, 0.011, 0.071);
+      lid.rotation.x = 0.55;
+      const brow = add(head, new THREE.CapsuleGeometry(0.0035, 0.024, 3, 6), hair, s * 0.031, 0.034, 0.083);
+      brow.rotation.z = Math.PI / 2 + s * 0.12;
+    }
+    add(head, shell(hg, hairMask, elder ? 0.0075 : 0.009, elder ? 0.004 : 0.003), hair);
+    if (elder) {
+      add(head, shell(hg, beardMask, 0.012, 0.006), hair);
+      const mus = add(head, new THREE.CapsuleGeometry(0.006, 0.035, 4, 8), hair, 0, -0.052, 0.088);
+      mus.rotation.z = Math.PI / 2; mus.scale.set(1, 1, 0.8);
+    }
   }
 
   // ---- arms (IK chains)
@@ -290,9 +323,13 @@ export function buildPerson(kind) {
     cape.scale.set(1.05, 1, 0.78);
     const front = ribbon([V(0.19, 0.53, 0.02), V(0.08, 0.5, 0.12), V(-0.08, 0.45, 0.12), V(-0.2, 0.4, 0.06)], 0.09, 0.01, 0.004);
     add(torso, front, mantle);
-    const fib = add(torso, new THREE.BoxGeometry(0.05, 0.012, 0.016), gold, 0.19, 0.55, 0.05);
-    fib.rotation.z = 0.4;
-    for (const dx of [-0.026, 0.026]) add(fib, new THREE.SphereGeometry(0.008, 10, 8), gold, dx, 0, 0);
+  }
+  // round bronze disc brooch at the shoulder, as in the portraits
+  {
+    const br = add(torso, new THREE.CylinderGeometry(0.022, 0.022, 0.006, 28), gold, elder ? -0.17 : 0.18, 0.53, 0.07);
+    br.rotation.x = Math.PI / 2 - 0.5;
+    const boss = add(br, new THREE.TorusGeometry(0.014, 0.003, 8, 24), gold, 0, 0.004, 0);
+    boss.rotation.x = Math.PI / 2;
   }
 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });

@@ -133,10 +133,11 @@ async function boot() {
 }
 
 function buildPeople() {
-  figs.A = buildPerson('elder');
+  // portraits: eye midpoint (px) and eye distance (px) inside the 600 px crops
+  figs.A = buildPerson('elder', { url: 'assets/faces/theodoros.jpg', size: 600, eye: [298, 287], ipd: 140, skin: 0x9a6248, hair: 0x4a3a2e, beard: 0x5a4c42 });
   figs.A.root.position.set(0, 0, 0.8);
   figs.A.root.rotation.y = Math.PI;
-  figs.B = buildPerson('young');
+  figs.B = buildPerson('young', { url: 'assets/faces/markianos.jpg', size: 600, eye: [301, 288], ipd: 138, skin: 0x96603f, hair: 0x2a1c16, beard: 0x241812 });
   figs.B.root.position.set(0, 0, -0.8);
   for (const p of ['A', 'B']) {
     const f = figs[p];
