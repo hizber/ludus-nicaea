@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ludus Duodecim Scriptorum · Nikaia</title>
+<meta name="description" content="On İki Yazıt Oyunu: Antik Nikaia ve Askania Gölü'ne bakan mermer tablada, bir arkadaşınla çevrimiçi oyna.">
+<meta property="og:title" content="Ludus Duodecim Scriptorum · Nikaia">
+<meta property="og:description" content="Nikaia tepelerinde, MS 325'te bir XII scripta oyunu. Gel oynayalım!">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bubbles"><div class="bubble" id="bubbleE"><b></b><span></span></div><div class="bubble" id="bubbleY"><b></b><span></span></div></div>
+
+<div id="loading">
+  <div class="mark">XII</div>
+  <div class="ltitle" lang="la">Ludus Duodecim Scriptorum</div>
+  <div id="loadmsg"></div>
+  <div class="bar"><span id="loadbar"></span></div>
+</div>
+
+<div id="lobby" class="panel hidden">
+  <div class="langs"><button data-setlang="tr">TR</button><button data-setlang="en">EN</button></div>
+  <div class="kicker" data-i18n="era"></div>
+  <h1 lang="la">Ludus Duodecim Scriptorum</h1>
+  <p class="lede" data-i18n="lede"></p>
+  <label class="field"><span data-i18n="yourName"></span><input id="name" maxlength="18" data-i18n-ph="namePh"></label>
+  <div class="btnrow">
+    <button id="btnHost" class="primary" data-i18n="host"></button>
+    <button id="btnLocal" data-i18n="local"></button>
+  </div>
+  <div class="join">
+    <input id="joinCode" maxlength="6" data-i18n-ph="code" autocomplete="off">
+    <button id="btnJoin" data-i18n="join"></button>
+  </div>
+  <button class="link" data-open="rules" data-i18n="howto"></button>
+</div>
+
+<div id="invite" class="panel hidden">
+  <div class="kicker" data-i18n="inviteKicker"></div>
+  <h2 data-i18n="inviteTitle"></h2>
+  <div class="copyrow"><input id="inviteLink" readonly><button id="btnCopy" class="primary" data-i18n="copy"></button></div>
+  <button id="btnShare" class="hidden" data-i18n="share"></button>
+  <p class="muted" id="inviteStatus" data-i18n="waiting"></p>
+  <p class="muted small"><span data-i18n="roomCode"></span> <b id="roomCode"></b> · <span data-i18n="keepOpen"></span></p>
+  <button class="link" id="btnCloseInvite" data-i18n="close"></button>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="pcard" id="cardA">
+    <div class="chip a"></div>
+    <div class="pinfo"><div class="pname" id="nameA"></div><div class="pstats" id="statsA"></div></div>
+  </div>
+  <div id="center">
+    <div id="turnText">—</div>
+    <div id="diceTray"></div>
+    <button id="btnRoll" class="primary hidden" data-i18n="roll"></button>
+    <div id="hint"></div>
+  </div>
+  <div class="pcard right" id="cardB">
+    <div class="pinfo"><div class="pname" id="nameB"></div><div class="pstats" id="statsB"></div></div>
+    <div class="chip b"></div>
+  </div>
+</div>
+
+<div id="tools" class="hidden">
+  <button id="btnView">◱ <span data-i18n="view"></span></button>
+  <button id="btnTalk">❝ <span data-i18n="talk"></span></button>
+  <button id="btnVoice">🗣 <span data-i18n="voice"></span></button>
+  <button id="btnSound">♪ <span data-i18n="sound"></span></button>
+  <button data-open="rules">✦ <span data-i18n="rules"></span></button>
+  <button id="btnLang">TR/EN</button>
+  <button id="btnInvite" class="hidden">⚭ <span data-i18n="invite"></span></button>
+</div>
+
+<div id="conn" class="hidden"></div>
+<div id="toast"></div>
+
+<div id="winner" class="panel hidden">
+  <div class="kicker" lang="la">Victoria</div>
+  <h2 id="winText"></h2>
+  <p class="lede" id="winSub"></p>
+  <button id="btnRematch" class="primary" data-i18n="rematch"></button>
+</div>
+
+<div id="rules" class="modal hidden">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <div data-l="tr">
+      <div class="kicker">İznik Müzesi'ndeki pano</div>
+      <h2>Ludus Duodecim Scriptorum nasıl oynanır?</h2>
+      <p>Her oyuncunun 15 taşı vardır. Oyuncular kimin önce başlayacağına zar atarak karar verir. Bir oyuncu üç zarı da aynı anda atar; her bir zar bir taşın ilerleyeceği hücre sayısını gösterir.</p>
+      <ol>
+        <li>Zar atıldıktan sonra zarın üzerindeki sayıya göre oyuncu taşını kendi tarafındaki 1a–6a veya 1b–6b sütunlarına yerleştirir. Bütün taşlar oyun tablasına yerleştikten sonra taşların ilerlemesi başlar.</li>
+        <li>İlerleme zarlar üzerindeki sayı kadar olur. Oyuncunun tüm taşları 25–30 arasındaki hücrelere geldikten sonra zardan gelecek sayıya göre taşları oyun tablasından almaya başlar.</li>
+        <li>Eğer zarlardan biri oyun tablasının dışına düşerse zarın üzerindeki sayı kadar geri hareket etmek zorunda kalınır.</li>
+        <li>Aynı renkteki taşlar üst üste sınırsız sayıda istiflenebilir. Bir hücrede iki veya daha fazla taş varsa rakip oyuncu o hücreye taş koyamaz.</li>
+        <li>Oyuncunun taşı, içinde tek taş bulunan hücreye denk gelirse, rakip o taşı oyun tablasının dışına alır. Taşın tekrar oyun tablasına dönebilmesi için 1–6. hücrelere yeniden girmeyi başarması gerekir.</li>
+        <li>Bir oyuncu, taşları ilerletmeye başlamadan önce 15 taşının tümünü kendi taraflarındaki 1a–6a veya 1b–6b hücrelerine sokmayı başarması gerekmektedir.</li>
+        <li>Bir oyuncunun taşlarını oyun tablasından alabilmesi için kendine ait 15 taşının tümünü 25–30 arasındaki hücrelere yerleştirmiş olması gerekir.</li>
+        <li>15 taşının tamamını oyun tablasından ilk çıkaran oyuncu oyunu kazanır.</li>
+      </ol>
+      <h3>Bu tablada</h3>
+      <p>Yolunuz: kendi sıranız (1–12), orta sıradan geri (13–24), ardından rakibin sırasının ilk yarısı (25–30). Taşınıza tıklayın; altın halkalar gidebileceği yerleri gösterir. Kırmızı zar “tablanın dışına düşmüş” zardır ve bir taşı geri götürür. Kullanılamayan zarlar yanar.</p>
+      <p class="small">Oyunun asıl kuralları günümüze ulaşmamıştır; burada İznik Müzesi panosundaki yorum izlenmiştir.</p>
+    </div>
+    <div data-l="en" class="hidden">
+      <div class="kicker">As displayed in the İznik Museum</div>
+      <h2>How was Ludus Duodecim Scriptorum played?</h2>
+      <p>Each player has 15 pieces. Players decide who starts by tossing the dice. A player tosses all three dice at once; each die shows the number of cells one piece moves.</p>
+      <ol>
+        <li>After the dice are tossed, the player puts pieces onto cells 1a–6a (or 1b–6b) on their side, according to the dice. When all pieces are on the board, they start to move.</li>
+        <li>Movement follows the numbers on the dice. Once all of a player's pieces are on cells 25–30, they start removing pieces from the board.</li>
+        <li>If a die falls off the board, the player must move back by that number.</li>
+        <li>Pieces of the same colour can be stacked without limit. Where there are two or more pieces, the opponent cannot land.</li>
+        <li>A piece landing on a single opposing piece takes it off the board; to come back it must re-enter on cells 1–6.</li>
+        <li>Before advancing, a player must have placed all 15 pieces on 1a–6a / 1b–6b.</li>
+        <li>To remove pieces, all 15 must stand on cells 25–30.</li>
+        <li>The first player to remove all 15 pieces wins.</li>
+      </ol>
+      <h3>On this board</h3>
+      <p>Your path: your own row (1–12), back along the middle row (13–24), then the first half of your opponent's row (25–30). Click one of your pieces; gold rings show where it may go. A red die “fell off the board” and moves a piece backwards. Dice that cannot be used are forfeited.</p>
+      <p class="small">The original rules have not survived; this follows the İznik Museum's reconstruction.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
