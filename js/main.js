@@ -767,7 +767,14 @@ class Talk {
       if (window.speechSynthesis) speechSynthesis.resume();
     };
     addEventListener('pointerdown', unlock, true); addEventListener('keydown', unlock, true);
+    // clips not generated yet: such lines are skipped instead of shown in silence
+    this.missing = {};
+    fetch('assets/voice/missing.json').then((r) => r.json())
+      .then((m) => { for (const k in m) this.missing[k] = new Set(m[k]); }).catch(() => {});
+    this.sayId = 0;
   }
+  hasClip(id) { const m = this.missing[lang]; return !m || !m.has(id); }
+  voiced(ci) { return CONVERSATIONS[ci].every((_, j) => this.hasClip(`c${ci}_${j}`)); }
   setEnabled(on) { this.enabled = on; store.set('ludus-talk', on); if (!on) this.cancel(); }
   setVoice(on) {
     this.voice = on; store.set('ludus-voice', on);
@@ -802,10 +809,11 @@ class Talk {
       me.lookAt(them.head.getWorldPosition(new THREE.Vector3()));
       them.lookAt(me.head.getWorldPosition(new THREE.Vector3()));
       let done = false;
+      const id = ++this.sayId;
       const finish = () => {
         if (done) return; done = true;
-        b.classList.remove('show');
-        this.active = null;
+        // a late timer from a cancelled line must not hide the line now showing
+        if (id === this.sayId) { b.classList.remove('show'); this.active = null; }
         setTimeout(resolve, 450);
       };
       const minMs = 1800 + text.length * 62;
@@ -863,9 +871,11 @@ class Talk {
   react(player, kind) {
     if (!this.enabled || this.busy) return;
     const list = REACTIONS[kind];
-    const i = Math.floor(Math.random() * list.length);
-    const [tr, en] = list[i];
     const sp = player === 'A' ? 'E' : 'Y';
+    const all = list.map((_, k) => k), ok = all.filter((k) => this.hasClip(`r_${kind}_${k}_${sp}`));
+    const pool = this.voice && ok.length ? ok : all;
+    const i = pool[Math.floor(Math.random() * pool.length)];
+    const [tr, en] = list[i];
     this.busy = true;
     const token = ++this.token;
     this.say(sp, lang === 'tr' ? tr : en, token, `r_${kind}_${i}_${sp}`).then(() => {
@@ -875,7 +885,10 @@ class Talk {
   update(now) {
     if (!this.enabled || this.busy || !G.mode || now < this.next) return;
     if (!$('#lobby').classList.contains('hidden')) return;
-    this.conversation(this.order[this.idx++ % this.order.length]);
+    let ci, tries = 0;
+    do ci = this.order[this.idx++ % this.order.length];
+    while (this.voice && !this.voiced(ci) && ++tries < this.order.length);
+    this.conversation(ci);
   }
   place() {
     for (const sp of ['E', 'Y']) {
